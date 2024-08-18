@@ -27,10 +27,7 @@ class DebateApp:
         self.highlight_bg = "#3e3e42"
 
         # Create or reset conversation log file with UTF-8 encoding
-        if os.path.exists(CONVERSATION_LOG):
-            os.remove(CONVERSATION_LOG)
-        with open(CONVERSATION_LOG, "w", encoding="utf-8") as f:
-            f.write("Debate Conversation Log\n\n")
+        self.reset_conversation_log()
 
         # Fetch available models
         self.models = self.get_ollama_models()
@@ -45,7 +42,7 @@ class DebateApp:
         self.topic_label.pack()
 
         self.topic_entry = tk.Entry(
-            self.root, width=50, bg=self.entry_bg, fg=self.entry_fg
+            self.root, width=200, bg=self.entry_bg, fg=self.entry_fg
         )
         self.topic_entry.pack()
 
@@ -266,9 +263,24 @@ class DebateApp:
             self.audio_stream.feed(sentence)
             self.audio_stream.play()
 
+    def reset_event_loop(self):
+        # Check if the loop is still running and stop it
+        if self.loop.is_running():
+            tasks = asyncio.all_tasks(self.loop)
+            for task in tasks:
+                task.cancel()
+            self.loop.call_soon_threadsafe(self.loop.stop)
+
+        # Close the loop if it hasn't been closed
+        if not self.loop.is_closed():
+            self.loop.close()
+
+        # Create a new event loop for the next time the debate is started
+        self.loop = asyncio.new_event_loop()
+
     def start_debate(self):
-        # Reset all states before starting a new debate
-        # self.reset_state()
+        # Reset the event loop without resetting the state
+        self.reset_event_loop()
 
         self.topic = self.topic_entry.get()
         self.conversation = f"Topic: {self.topic}\n\n"
@@ -348,10 +360,11 @@ class DebateApp:
         self.running = False
 
         if self.loop.is_running():
-            # Schedule the loop to stop and ensure it completes stopping
+            tasks = asyncio.all_tasks(self.loop)
+            for task in tasks:
+                task.cancel()
             self.loop.call_soon_threadsafe(self.loop.stop)
 
-        # Use after method to join the thread without blocking the main thread
         self.root.after(100, self.check_thread_completion)
 
     def check_thread_completion(self):
@@ -363,7 +376,7 @@ class DebateApp:
             self.reset_state()
 
             if not self.loop.is_closed():
-                self.loop.close()
+                self.loop.close()  # Ensure the loop is closed
 
             # Create a new loop for the next time the debate is started
             self.loop = asyncio.new_event_loop()
@@ -404,77 +417,89 @@ class DebateApp:
         self.con_length_entry.insert(0, "50")
 
     async def debate_loop(self):
-        while self.running:
-            self.update_prompts()  # Ensure prompts are updated each loop
+        try:
+            while self.running:
+                self.update_prompts()  # Ensure prompts are updated each loop
 
-            if self.turn % 2 == 1:
-                self.pro_text.delete(1.0, tk.END)
-                self.pro_text.insert(tk.END, "\nDebater 1 (Pro):\n")
-                selected_model = self.pro_model_var.get()
+                if self.turn % 2 == 1:
+                    self.pro_text.delete(1.0, tk.END)
+                    self.pro_text.insert(tk.END, "\nDebater 1 (Pro):\n")
+                    selected_model = self.pro_model_var.get()
 
-                # Preload next response while the current one is speaking
-                next_response_task = asyncio.create_task(
-                    self.get_ollama_response(self.con_model_var.get(), self.prompt2)
-                )
+                    # Preload next response while the current one is speaking
+                    next_response_task = asyncio.create_task(
+                        self.get_ollama_response(self.con_model_var.get(), self.prompt2)
+                    )
 
-                response = await self.get_ollama_response(selected_model, self.prompt1)
-                if response:
-                    self.conversation += f"Debater 1 (Pro): {response}\n\n"
-                    with open(CONVERSATION_LOG, "a", encoding="utf-8") as f:
-                        f.write(f"Debater 1 (Pro): {response}\n\n")
-                    self.pro_text.insert(tk.END, response)
-                    self.is_playing = True
+                    response = await self.get_ollama_response(
+                        selected_model, self.prompt1
+                    )
+                    if response:
+                        self.conversation += f"Debater 1 (Pro): {response}\n\n"
+                        with open(CONVERSATION_LOG, "a", encoding="utf-8") as f:
+                            f.write(f"Debater 1 (Pro): {response}\n\n")
+                        self.pro_text.insert(tk.END, response)
+                        self.is_playing = True
 
-                    self.speak_text(response)
+                        self.speak_text(response)
 
-                    # Wait for the next response to be ready
-                    await next_response_task
+                        # Wait for the next response to be ready
+                        await next_response_task
 
-                    # Prepare next prompt based on the response
-                    self.next_prompt = f"Debater 1 (Pro) argued: '{response}'. Consider the entire conversation so far, but respond only to this argument. Provide a compelling counterargument in about {self.pro_length_entry.get()} words."
+                        # Prepare next prompt based on the response
+                        self.next_prompt = f"Debater 1 (Pro) argued: '{response}'. Consider the entire conversation so far, but respond only to this argument. Provide a compelling counterargument in about {self.pro_length_entry.get()} words."
 
-                    # Retrieve the preloaded response for the next turn
-                    response = await next_response_task
+                        # Retrieve the preloaded response for the next turn
+                        response = await next_response_task
 
-            else:
-                self.con_text.delete(1.0, tk.END)
-                self.con_text.insert(tk.END, "\nDebater 2 (Con):\n")
-                selected_model = self.con_model_var.get()
+                else:
+                    self.con_text.delete(1.0, tk.END)
+                    self.con_text.insert(tk.END, "\nDebater 2 (Con):\n")
+                    selected_model = self.con_model_var.get()
 
-                # Preload next response while the current one is speaking
-                next_response_task = asyncio.create_task(
-                    self.get_ollama_response(self.pro_model_var.get(), self.prompt1)
-                )
+                    # Preload next response while the current one is speaking
+                    next_response_task = asyncio.create_task(
+                        self.get_ollama_response(self.pro_model_var.get(), self.prompt1)
+                    )
 
-                response = await self.get_ollama_response(selected_model, self.prompt2)
-                if response:
-                    self.conversation += f"Debater 2 (Con): {response}\n\n"
-                    with open(CONVERSATION_LOG, "a", encoding="utf-8") as f:
-                        f.write(f"Debater 2 (Con): {response}\n\n")
-                    self.con_text.insert(tk.END, response)
-                    self.is_playing = True
+                    response = await self.get_ollama_response(
+                        selected_model, self.prompt2
+                    )
+                    if response:
+                        self.conversation += f"Debater 2 (Con): {response}\n\n"
+                        with open(CONVERSATION_LOG, "a", encoding="utf-8") as f:
+                            f.write(f"Debater 2 (Con): {response}\n\n")
+                        self.con_text.insert(tk.END, response)
+                        self.is_playing = True
 
-                    self.speak_text(response)
+                        self.speak_text(response)
 
-                    # Wait for the next response to be ready
-                    await next_response_task
+                        # Wait for the next response to be ready
+                        await next_response_task
 
-                    # Prepare next prompt based on the response
-                    self.next_prompt = f"Debater 2 (Con) argued: '{response}'. Consider the entire conversation so far, but respond only to this argument. Strengthen your position on the topic: '{self.topic}' in about {self.con_length_entry.get()} words."
+                        # Prepare next prompt based on the response
+                        self.next_prompt = f"Debater 2 (Con) argued: '{response}'. Consider the entire conversation so far, but respond only to this argument. Strengthen your position on the topic: '{self.topic}' in about {self.con_length_entry.get()} words."
 
-                    # Retrieve the preloaded response for the next turn
-                    response = await next_response_task
+                        # Retrieve the preloaded response for the next turn
+                        response = await next_response_task
 
-            while self.is_playing:
-                await asyncio.sleep(0.1)
+                while self.is_playing:
+                    await asyncio.sleep(0.1)
 
-            if self.turn % 2 == 1:
-                self.prompt2 = f"{self.conversation}{self.next_prompt}"
-            else:
-                self.prompt1 = f"{self.conversation}{self.next_prompt}"
+                if self.turn % 2 == 1:
+                    self.prompt2 = f"{self.conversation}{self.next_prompt}"
+                else:
+                    self.prompt1 = f"{self.conversation}{self.next_prompt}"
 
-            self.turn += 1
-            await asyncio.sleep(1)
+                self.turn += 1
+                await asyncio.sleep(1)
+
+        except asyncio.CancelledError:
+            # Handle the cancellation gracefully, if needed
+            print("Debate loop was cancelled.")
+        finally:
+            # Any cleanup code that needs to be run when the loop ends
+            print("Debate loop has been terminated.")
 
     def on_playback_finished(self):
         self.is_playing = False
@@ -483,6 +508,13 @@ class DebateApp:
 
     async def play_next(self):
         pass  # Placeholder for additional logic if needed
+
+    def reset_conversation_log(self):
+
+        if os.path.exists(CONVERSATION_LOG):
+            os.remove(CONVERSATION_LOG)
+        with open(CONVERSATION_LOG, "w", encoding="utf-8") as f:
+            f.write("Debate Conversation Log\n\n")
 
 
 if __name__ == "__main__":
