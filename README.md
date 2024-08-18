@@ -5,7 +5,7 @@
 
 ## Demonstration
 
-Check out the demonstration video on YouTube: [Watch Video](https://youtu.be/4n2aNJ0-7NQ)
+[![Watch the video](https://img.youtube.com/vi/4n2aNJ0-7NQ/maxresdefault.jpg)](https://youtu.be/4n2aNJ0-7NQ)
 
 ## Overview
 
