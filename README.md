@@ -22,7 +22,7 @@ AI-Debate is an interactive application that simulates a debate between two AI-p
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/ai-debate.git
+git clone https://github.com/roundyyy/ai-debate.git
 cd ai-debate
 ```
 
