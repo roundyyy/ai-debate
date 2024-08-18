@@ -3,7 +3,7 @@
 
 ![Screenshot](screenshot.png)
 
-## Demonstration
+## Demonstration (YouTube link, CLick on the image below)
 
 [![Watch the video](https://img.youtube.com/vi/4n2aNJ0-7NQ/maxresdefault.jpg)](https://youtu.be/4n2aNJ0-7NQ)
 
